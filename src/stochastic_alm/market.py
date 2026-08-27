@@ -7,8 +7,17 @@ from dataclasses import dataclass, field
 import numpy as np
 from numpy.typing import NDArray
 
-
 FloatArray = NDArray[np.float64]
+
+
+def _correlation_root(correlation: FloatArray) -> FloatArray:
+    """Return a symmetric square root for a validated PSD correlation matrix."""
+    symmetric = 0.5 * (correlation + correlation.T)
+    eigenvalues, eigenvectors = np.linalg.eigh(symmetric)
+    if eigenvalues.min() < -1e-10:
+        raise ValueError("correlation must be positive semidefinite")
+    clipped = np.clip(eigenvalues, 0.0, None)
+    return (eigenvectors * np.sqrt(clipped)) @ eigenvectors.T
 
 
 def _default_correlation() -> FloatArray:
@@ -47,12 +56,15 @@ class MarketAssumptions:
         corr = np.asarray(self.correlation, dtype=float)
         if corr.shape != (4, 4):
             raise ValueError("correlation must be a 4x4 matrix")
+        if not np.all(np.isfinite(corr)):
+            raise ValueError("correlation must contain finite values")
         if not np.allclose(corr, corr.T, atol=1e-12):
             raise ValueError("correlation must be symmetric")
         if not np.allclose(np.diag(corr), 1.0, atol=1e-12):
             raise ValueError("correlation must have ones on the diagonal")
         if np.linalg.eigvalsh(corr).min() < -1e-10:
             raise ValueError("correlation must be positive semidefinite")
+        object.__setattr__(self, "correlation", corr)
 
 
 @dataclass(frozen=True)
@@ -86,9 +98,9 @@ def simulate_market(
         raise ValueError("scenarios, years, and steps_per_year must be positive")
 
     a = assumptions or MarketAssumptions()
-    steps = max(1, int(round(years * steps_per_year)))
+    steps = max(1, round(years * steps_per_year))
     dt = years / steps
-    root = np.linalg.cholesky(np.asarray(a.correlation) + np.eye(4) * 1e-14)
+    root = _correlation_root(np.asarray(a.correlation))
     rng = np.random.default_rng(seed)
 
     short_rate = np.empty((scenarios, steps + 1))
@@ -126,9 +138,7 @@ def simulate_market(
         )
         inflation_rate[:, step] = (
             previous_inflation
-            + a.inflation_mean_reversion
-            * (a.long_run_inflation_rate - previous_inflation)
-            * dt
+            + a.inflation_mean_reversion * (a.long_run_inflation_rate - previous_inflation) * dt
             + a.inflation_volatility * sqrt_dt * z[:, 2]
         )
         inflation_index[:, step] = inflation_index[:, step - 1] * np.exp(
@@ -149,4 +159,3 @@ def simulate_market(
         credit_spread=spread,
         dt=dt,
     )
-
