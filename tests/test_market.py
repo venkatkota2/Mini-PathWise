@@ -22,6 +22,20 @@ def test_invalid_correlation_is_rejected():
         MarketAssumptions(correlation=np.ones((3, 3)))
 
 
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"equity_volatility": float("nan")},
+        {"rate_volatility": -0.01},
+        {"initial_equity_index": 0.0},
+        {"initial_credit_spread": -0.01},
+    ],
+)
+def test_invalid_scalar_market_assumptions_are_rejected(kwargs):
+    with pytest.raises(ValueError):
+        MarketAssumptions(**kwargs)
+
+
 def test_positive_semidefinite_correlation_is_supported():
     perfectly_correlated = np.array(
         [

@@ -8,7 +8,7 @@ from math import isfinite
 import numpy as np
 from numpy.typing import NDArray
 
-from .assets import project_constant_mix
+from .assets import project_constant_mix_with_shortfall
 from .liabilities import LiabilityCashflows
 from .market import MarketAssumptions, simulate_market
 
@@ -40,6 +40,7 @@ class ALMResult:
     probability_of_deficit: float
     stress_funding_ratios: dict[str, float]
     liability_payments_through_horizon: float
+    unpaid_liability_payments: FloatArray
 
     @property
     def mean_funding_ratio(self) -> float:
@@ -79,14 +80,18 @@ def _stress_ratios(
     equity_weight: float,
     bond_duration: float,
     spread_duration: float,
+    unpaid_payments: FloatArray,
 ) -> dict[str, float]:
     base_assets = float(np.mean(assets))
-    base_liabilities = float(np.mean(liabilities.value_at_horizon(horizon, discount_rates)))
-    rates_up_liabilities = float(
-        np.mean(liabilities.value_at_horizon(horizon, discount_rates + 0.01))
+    overdue = float(np.mean(unpaid_payments))
+    base_liabilities = overdue + float(
+        np.mean(liabilities.value_at_horizon(horizon, discount_rates))
     )
-    rates_down_liabilities = float(
-        np.mean(liabilities.value_at_horizon(horizon, discount_rates - 0.01))
+    rates_up_liabilities = (
+        float(np.mean(liabilities.value_at_horizon(horizon, discount_rates + 0.01))) + overdue
+    )
+    rates_down_liabilities = (
+        float(np.mean(liabilities.value_at_horizon(horizon, discount_rates - 0.01))) + overdue
     )
 
     def ratio(asset_value: float, liability_value: float) -> float:
@@ -129,11 +134,25 @@ def run_alm(
         raise ValueError("ALM configuration must be finite")
     if (
         c.initial_assets <= 0
-        or c.scenarios <= 0
         or c.risk_horizon_years <= 0
-        or c.steps_per_year <= 0
+        or not 0.0 <= c.equity_weight <= 1.0
+        or c.bond_duration < 0
+        or c.spread_duration < 0
+        or not 0.5 < c.confidence < 1.0
     ):
         raise ValueError("invalid ALM configuration")
+    if (
+        not isinstance(c.scenarios, int)
+        or isinstance(c.scenarios, bool)
+        or c.scenarios <= 0
+        or not isinstance(c.steps_per_year, int)
+        or isinstance(c.steps_per_year, bool)
+        or c.steps_per_year <= 0
+        or not isinstance(c.seed, int)
+        or isinstance(c.seed, bool)
+        or c.seed < 0
+    ):
+        raise ValueError("scenario counts, steps, and seed must be valid integers")
 
     paths = simulate_market(
         assumptions,
@@ -143,7 +162,7 @@ def run_alm(
         seed=c.seed,
     )
     payments = liabilities.payments_by_step(c.risk_horizon_years, paths.steps)
-    asset_paths = project_constant_mix(
+    asset_paths, unpaid_payments = project_constant_mix_with_shortfall(
         paths,
         initial_assets=c.initial_assets,
         equity_weight=c.equity_weight,
@@ -153,7 +172,8 @@ def run_alm(
     )
     assets = asset_paths[:, -1]
     discount_rates = paths.short_rate[:, -1] + c.liability_discount_spread
-    liability_values = liabilities.value_at_horizon(c.risk_horizon_years, discount_rates)
+    remaining_liability_values = liabilities.value_at_horizon(c.risk_horizon_years, discount_rates)
+    liability_values = remaining_liability_values + unpaid_payments
     funding_ratio = np.divide(
         assets,
         liability_values,
@@ -179,6 +199,8 @@ def run_alm(
             equity_weight=c.equity_weight,
             bond_duration=c.bond_duration,
             spread_duration=c.spread_duration,
+            unpaid_payments=unpaid_payments,
         ),
         liability_payments_through_horizon=float(np.sum(payments)),
+        unpaid_liability_payments=unpaid_payments,
     )

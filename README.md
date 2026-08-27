@@ -1,5 +1,7 @@
 # stochastic-alm
 
+[![CI](https://github.com/venkatkota2/Mini-PathWise/actions/workflows/ci.yml/badge.svg)](https://github.com/venkatkota2/Mini-PathWise/actions/workflows/ci.yml)
+
 A compact stochastic asset-liability modelling platform for insurance and pension risk work. It turns explicit economic assumptions into correlated market paths, projects an asset portfolio against liability cash flows, and reports funding-ratio and tail-risk outcomes.
 
 This repository is the portfolio-ready continuation of **Mini PathWise**. It is an independent educational implementation and is not affiliated with Aon or PathWise.
@@ -7,7 +9,7 @@ This repository is the portfolio-ready continuation of **Mini PathWise**. It is 
 ## What it does
 
 - Simulates correlated short rates, equities, inflation, and credit spreads.
-- Projects a rebalanced equity/bond portfolio, then explicitly pays liability cash flows due in each interval.
+- Projects a rebalanced equity/bond portfolio, explicitly pays liability cash flows due in each interval, and retains any unpaid amount as a funding obligation.
 - Values remaining liability cash flows in every scenario.
 - Reports funding-ratio distributions, probability of deficit, 99.5% deficit VaR, and fractional-tail empirical Expected Shortfall.
 - Revalues remaining cash flows under rate stresses and applies documented duration approximations to assets.
@@ -35,7 +37,7 @@ probability of deficit  42.76%
 
 ## Model design
 
-The economic scenario generator uses mean-reverting rate, inflation, and spread processes with geometric Brownian equity returns. Innovations are linked through a validated positive-semidefinite correlation matrix. The asset projection applies constant-mix rebalancing and a duration approximation to the bond sleeve. Market evolution occurs first in each interval; cash flows due at the interval end (including exactly at the risk horizon) are then paid from assets. Remaining nominal cash flows are valued with continuously compounded scenario discount rates.
+The economic scenario generator uses mean-reverting rate, inflation, and spread processes with geometric Brownian equity returns. Innovations are linked through a validated positive-semidefinite correlation matrix. The asset projection applies constant-mix rebalancing and a duration approximation to the bond sleeve. Market evolution occurs first in each interval; cash flows due at the interval end (including exactly at the risk horizon) are then paid from assets. If available assets are insufficient, the unpaid nominal amount remains in horizon liabilities rather than disappearing behind an asset floor. Remaining future nominal cash flows are valued with continuously compounded scenario discount rates.
 
 Expected Shortfall averages exactly the worst `1 - confidence` empirical mass,
 including a fractional boundary observation where necessary. This prevents a
@@ -61,4 +63,4 @@ tests/                             deterministic unit tests
 
 ## Scope and limitations
 
-This is an educational/research implementation, not production actuarial software. It uses simplified market dynamics and duration approximations for the bond sleeve. It is not affiliated with Aon or PathWise and is not a full nested-stochastic insurance valuation system. It does not yet include policyholder behaviour, capital aggregation, or IFRS 17 measurement; those are future model layers rather than implied features.
+This is an educational/research implementation, not production actuarial software. It uses simplified market dynamics and duration approximations for the bond sleeve. Unpaid liability cash flows are carried to the horizon at nominal value; the model does not add contractual late-payment interest. It is not affiliated with Aon or PathWise and is not a full nested-stochastic insurance valuation system. It does not yet include policyholder behaviour, capital aggregation, or IFRS 17 measurement; those are future model layers rather than implied features.
