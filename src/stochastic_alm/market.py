@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import isfinite
 
 import numpy as np
 from numpy.typing import NDArray
@@ -53,6 +54,43 @@ class MarketAssumptions:
     correlation: FloatArray = field(default_factory=_default_correlation)
 
     def __post_init__(self) -> None:
+        numeric = (
+            self.initial_short_rate,
+            self.long_run_short_rate,
+            self.rate_mean_reversion,
+            self.rate_volatility,
+            self.initial_equity_index,
+            self.equity_risk_premium,
+            self.equity_dividend_yield,
+            self.equity_volatility,
+            self.initial_inflation_rate,
+            self.long_run_inflation_rate,
+            self.inflation_mean_reversion,
+            self.inflation_volatility,
+            self.initial_credit_spread,
+            self.long_run_credit_spread,
+            self.spread_mean_reversion,
+            self.spread_volatility,
+        )
+        if not all(isfinite(value) for value in numeric):
+            raise ValueError("market assumptions must be finite")
+        if self.initial_equity_index <= 0:
+            raise ValueError("initial equity index must be positive")
+        if any(
+            value < 0
+            for value in (
+                self.rate_mean_reversion,
+                self.rate_volatility,
+                self.equity_volatility,
+                self.inflation_mean_reversion,
+                self.inflation_volatility,
+                self.initial_credit_spread,
+                self.long_run_credit_spread,
+                self.spread_mean_reversion,
+                self.spread_volatility,
+            )
+        ):
+            raise ValueError("mean reversion, volatility, and credit spreads must be non-negative")
         corr = np.asarray(self.correlation, dtype=float)
         if corr.shape != (4, 4):
             raise ValueError("correlation must be a 4x4 matrix")
@@ -94,7 +132,19 @@ def simulate_market(
     seed: int = 7,
 ) -> MarketPaths:
     """Simulate correlated economic factors with Euler/log-Euler discretization."""
-    if scenarios <= 0 or years <= 0 or steps_per_year <= 0:
+    if (
+        not isinstance(scenarios, int)
+        or isinstance(scenarios, bool)
+        or scenarios <= 0
+        or not isinstance(steps_per_year, int)
+        or isinstance(steps_per_year, bool)
+        or steps_per_year <= 0
+        or not isfinite(years)
+        or years <= 0
+        or not isinstance(seed, int)
+        or isinstance(seed, bool)
+        or seed < 0
+    ):
         raise ValueError("scenarios, years, and steps_per_year must be positive")
 
     a = assumptions or MarketAssumptions()

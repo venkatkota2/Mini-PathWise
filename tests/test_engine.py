@@ -74,6 +74,64 @@ def test_liability_payment_at_horizon_is_deducted_from_assets():
     assert np.all(result.liabilities_at_horizon == 10.0)
     assert result.liability_payments_through_horizon == 10.0
     assert np.all(result.funding_ratio == 9.0)
+    assert np.all(result.unpaid_liability_payments == 0.0)
+
+
+def test_unpaid_liability_payment_remains_in_horizon_deficit():
+    liabilities = LiabilityCashflows(times=np.array([1.0]), amounts=np.array([150.0]))
+    deterministic = MarketAssumptions(
+        initial_short_rate=0.0,
+        long_run_short_rate=0.0,
+        rate_mean_reversion=0.0,
+        rate_volatility=0.0,
+        equity_risk_premium=0.0,
+        equity_dividend_yield=0.0,
+        equity_volatility=0.0,
+        initial_inflation_rate=0.0,
+        long_run_inflation_rate=0.0,
+        inflation_mean_reversion=0.0,
+        inflation_volatility=0.0,
+        initial_credit_spread=0.0,
+        long_run_credit_spread=0.0,
+        spread_mean_reversion=0.0,
+        spread_volatility=0.0,
+    )
+    result = run_alm(
+        liabilities,
+        ALMConfig(
+            initial_assets=100.0,
+            equity_weight=0.0,
+            bond_duration=0.0,
+            spread_duration=0.0,
+            risk_horizon_years=1.0,
+            steps_per_year=1,
+            scenarios=4,
+            liability_discount_spread=0.0,
+            confidence=0.75,
+        ),
+        deterministic,
+    )
+
+    assert np.all(result.assets_at_horizon == 0.0)
+    assert np.all(result.unpaid_liability_payments == 50.0)
+    assert np.all(result.liabilities_at_horizon == 50.0)
+    assert np.all(result.deficit == 50.0)
+    assert result.probability_of_deficit == 1.0
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        ALMConfig(equity_weight=1.1),
+        ALMConfig(bond_duration=-1.0),
+        ALMConfig(confidence=1.0),
+        ALMConfig(scenarios=True),
+    ],
+)
+def test_invalid_alm_configuration_is_rejected(config):
+    liabilities = LiabilityCashflows.level_annuity(annual_payment=1.0, years=2)
+    with pytest.raises(ValueError):
+        run_alm(liabilities, config)
 
 
 def test_liability_valuation_uses_one_continuous_compounding_convention():

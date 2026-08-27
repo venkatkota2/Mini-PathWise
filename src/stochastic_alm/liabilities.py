@@ -38,7 +38,15 @@ class LiabilityCashflows:
         years: int,
         growth: float = 0.02,
     ) -> LiabilityCashflows:
-        if annual_payment <= 0 or years <= 0 or growth <= -1:
+        if (
+            not isfinite(annual_payment)
+            or not isfinite(growth)
+            or annual_payment <= 0
+            or not isinstance(years, int)
+            or isinstance(years, bool)
+            or years <= 0
+            or growth <= -1
+        ):
             raise ValueError("invalid annuity assumptions")
         times = np.arange(1, years + 1, dtype=float)
         amounts = annual_payment * np.power(1.0 + growth, times - 1.0)
